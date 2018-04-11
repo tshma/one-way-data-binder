@@ -1,5 +1,5 @@
 /** OneWayDataBinder v1.2.0
- * supports IE9+ (excluding MutationObserver: only IE11); 
+ *	supports IE9+ (excluding MutationObserver: only IE11+); slight improvements will be possible upon upgrading to IE11+ only
  * it is designed as a function as it could be instantiated multiple times within the code either for different root-elements or even a duplicated ones with different purposes/options.
  *
  * @params: 
@@ -17,15 +17,56 @@
  *
  * @returns: 
  * :Object. with the following methods: 
- * + getData(): Object. a clone of the model, after filtering out any deleted array elements (the filtering is done over the original!)
- * + getDataJson(): string. a stingified JSON of the data, after filtering as in getData(). getData() actually uses getDataJson() in the process, and parses it.
+ * + getData(): Object. returns a clone of the model, after filtering out any deleted array elements (the filtering is done over the original!)
+ * + getDataJson(): string. returns a stingified JSON of the data, after filtering as in getData(). getData() actually uses getDataJson() in the process, and parses it.
  * + extractRawData(|path :string|): Object. returns a clone of the unfiltered model (see getData() above) if no path parameter is indicated or a part of it according to given path (e.g. "person.address")
  * + extractRawDataJson(|path :string|): Object. returns a stingified JSON of the unfiltered model if no path parameter is indicated or a part of it according to given path (e.g. "person.address")
  * + deleteFromModel(path :string): boolean. deletes data according to path. returns false either when path is incorrect or deleteable == false. otherwise returns true
  * + forceUpdateForField(elementToUpdate :string/:jQuery-object/:DOM-Node): boolean. allow to update model programmatically by element with a data-model attribute. 
- * 										returns false if elementToUpdate is invalid. otherwise returns true
- * +  bindToModel(selector :string/:jQuery-object/:DOM-Node |, addCurrentValues :boolean|): void. binds new inputs to the model according to a given selector or DOM/jQuery element. 
- * 										all relevant inputs within it that contain a data-model attribute will be added. addCurrentValues defaults to buildEmpty option if not sent as a parameter
+ * 								returns false if elementToUpdate is invalid. otherwise returns true
+ * + bindToModel(selector :string/:jQuery-object/:DOM-Node |, addCurrentValues :boolean|): void. binds new inputs to the model according to a given selector or DOM/jQuery element. 
+ * 								all relevant inputs within it that contain a data-model attribute will be added. addCurrentValues defaults to buildEmpty option if not sent as a parameter
+ *
+ * build information (v1.2.0):
+ * - added MutationObserver (for browsers that support it) to updated automatically added/removed nodes in the model, suppose they are under the 
+ * 	 model's rootElement html hierarchy.
+ * - fixed an end case possibility where a path to deleting a node would be created up to the node, suppose it's a wrong path. A situation where it
+ *	 might happen, is when trying to delete a node a second time. Suppose we already deleted worker[1] altogether and now trying to delete worker[1].firstName
+ * 	 until the bug was fixed, worker[1] would be created anew, and then firstName is tried to be deleted. Now we print a warning and return false and so: 
+ * - deleteFromModel() returns false either when path is incorrect as above, and true only if it's made it to the final node (whether or not existing)
+ *
+ * build information (v1.1.1):
+ * - fixed bug in bindModel() where rootElement was set to "body" string instead of DOM object (document.body) when defaulting
+ *
+ * build information (v1.1.0):
+ * - added extractRawDataJson() (and extractRawData) which allows to extract either all model as-is (without removal of deleted array elements) or a part/value within 
+ *	 the model according to a given path. The path format is the same as all model indicators. 
+ *   extractRawData() and extractRawDataJson() are thus exposed to the user, and for that reason return a copy of the relevant object.
+ * - added locateAndFetchNode() which is the functional part behind extractRawDataJson() that retreives the relevant node/value. It returns either the
+ *   value if located, or null/undefined if encountered anyway along the given path. 
+ *
+ * build information (v1.0.8):
+ * - wrapped event initialization inside refreshEvents() so it is renewed when using forceUpdateForField(). In rare cases forceUpdateForField is called
+ *   within another change-event and if not renewed it tries to use the same dispatched event (which is invalid and thus throws and exception).
+ * - removed redundant function wrapping for methods' exposition and used the original "private" functions directly
+ *
+ * build information (v1.0.7):
+ * - added forceUpdateForField() for modularity, convenience and safety of user force-update
+ * - to support the above method, added triggerEventForField() which is also used now with bindModel();
+ *
+ * build information (v1.0.6):
+ * - renamed module for collision safety
+ *
+ * build information (v1.0.5):
+ * - implemented radio buttons
+ *
+ * build information (v1.0.4):
+ * - added binding to input[type=number]
+ * 
+ * build information (v1.0.3):
+ * - because of specific requirement of a project the deleteNode option was added and exposed. 
+ * 	 it might be better to put in a different branch but it's not practical. So a config parameter was added to allow deletion at all or not
+ *   for each specific model wrapper.
  *
  **/
 
@@ -52,7 +93,12 @@ var OneWayDataBinder = function(options) {
 		}
 	}
 		
-	function locateAndUpdateNode(path, value, deleteNode) {
+	function locateAndUpdateNode(path, value, deleteNode) {			
+		if(path == null || path === "") {
+			console.log("Invalid path.");
+			return false;
+		}
+		
 		var parts = path.split("."), 
 			p, 
 			last,
@@ -73,7 +119,7 @@ var OneWayDataBinder = function(options) {
 			if(p < last) {	// a location in the middle of the chain						
 				if(location[parts[p]] == null) {
 					if(deleteNode) {
-						console.warn("Failed to locate node to delete. Recheck path.");
+						console.warn("Failed to locate node to delete. Invalid path.");
 						return false;
 					}
 					location[parts[p]] = isArray ? [] : {}; 
@@ -83,7 +129,7 @@ var OneWayDataBinder = function(options) {
 					tester = location[parts[p]][index];
 					if(tester == null) { // no object exists for index
 						if(deleteNode) {
-							console.warn("Failed to locate node to delete. Recheck path.");
+							console.warn("Failed to locate node to delete. Invalid path.");
 							return false;
 						}
 						location[parts[p]][index] = {}; // as we're in mid-chain we know it's an object // TODO check if working for an array within array
@@ -96,7 +142,7 @@ var OneWayDataBinder = function(options) {
 				if(isArray) {
 					if(location[parts[p]] == null) {
 						if(deleteNode) {
-							console.warn("Failed to locate node to delete. Recheck path.");
+							console.warn("Failed to locate node to delete. Invalid path.");
 							return false;
 						}
 						location[parts[p]] = [];									
@@ -118,6 +164,11 @@ var OneWayDataBinder = function(options) {
 	}	
 	
 	function locateAndFetchNode(path) {
+		if(path == null || path === "") {
+			console.warn("Invalid path");
+			return null;
+		}
+		
 		var parts = path.split("."), 
 			p, 
 			last,
@@ -136,14 +187,14 @@ var OneWayDataBinder = function(options) {
 			
 			if(p < last) {							
 				if(location[parts[p]] == null) { // either null or undefined
-					/* TODO: log to console along with inidcation where the path has eneded */
+					console.warn(path + " could not be completed, and stopped at " + path.split(".").splice(0, p).join("."));
 					return location[parts[p]]; 					
 				} 
 				// a location in the middle of the chain
 				if (isArray) {							
 					tester = location[parts[p]][index];
 					if(tester == null) { // object for index is either null or index undefined
-						/* TODO: log to console along with inidcation where the path has eneded */
+						console.warn(path + " could not be completed, and stopped at " + path.split(".").splice(0, p).join("."));
 						return tester; // as it might be either null or undefined
 					}
 					location = location[parts[p]][index];
@@ -153,7 +204,7 @@ var OneWayDataBinder = function(options) {
 			} else { // p === last, location at the relevant node to return
 				if(isArray) {
 					if(location[parts[p]] == null) {
-						/* TODO: log to console along with inidcation where the path has eneded */
+						console.warn(path + " leads to an index in a non-existant array.");
 						return location[parts[p]];									
 					}
 					
@@ -169,11 +220,7 @@ var OneWayDataBinder = function(options) {
 		handleEvent: function(e) {
 			var path = e.target.getAttribute("data-model"),
 				value = "", 
-				rdObj;
-				
-			if(path == null || path === "") {
-				return;
-			}
+				rdObj;			
 				
 			if(e.target.type === "checkbox") {
 				value = e.target.checked
@@ -335,7 +382,7 @@ var OneWayDataBinder = function(options) {
 			
 	refreshEvents(); // create initial events
 	bindModel(selector);
-	// if observeDom we monitor the rootElement for addition of new elements and add them to the model if applicable (i.e data-model exists)
+	// if observeDom is true we monitor the rootElement for addition of new elements and add them to the model if applicable (i.e data-model exists)
 	if(observeDom) {
 		if(window.MutationObserver) {
 			var targetNode = rootElement; // defaults to document.body
@@ -352,7 +399,10 @@ var OneWayDataBinder = function(options) {
 					}
 					
 					for(i = 0; i < removed.length; i+=1) {
-						// TODO how to remove data? inside out? all of them (function is robust)?
+						var modelNodes = removed[i].querySelectorAll('[data-model]');
+						modelNodes.forEach(function(node) {
+							locateAndUpdateNode(node.attributes["data-model"].value, null, true);
+						});
 					}
 				});
 			}; 
@@ -375,7 +425,7 @@ var OneWayDataBinder = function(options) {
 			// as delete returns true even if the property does not exist, a true is not an indication for its existence
 			// yet, we return false if the path is incorrect (unwinded before reaching the last node)
 			if(!deleteable) {
-				console.warn("This model does not allow deletion of nodes. To allow it configure it on initialization with deleteable = true");
+				console.warn("This model does not allow deletion of nodes. To allow it configure it on initialization with {deleteable:true}");
 				return false; // another indication of false, besides an unwinding path to node
 			}
 			
