@@ -27,47 +27,6 @@
  * + bindToModel(selector :string/:jQuery-object/:DOM-Node |, addCurrentValues :boolean|): void. binds new inputs to the model according to a given selector or DOM/jQuery element. 
  * 								all relevant inputs within it that contain a data-model attribute will be added. addCurrentValues defaults to buildEmpty option if not sent as a parameter
  *
- * build information (v1.2.0):
- * - added MutationObserver (for browsers that support it) to updated automatically added/removed nodes in the model, suppose they are under the 
- * 	 model's rootElement html hierarchy.
- * - fixed an end case possibility where a path to deleting a node would be created up to the node, suppose it's a wrong path. A situation where it
- *	 might happen, is when trying to delete a node a second time. Suppose we already deleted worker[1] altogether and now trying to delete worker[1].firstName
- * 	 until the bug was fixed, worker[1] would be created anew, and then firstName is tried to be deleted. Now we print a warning and return false and so: 
- * - deleteFromModel() returns false either when path is incorrect as above, and true only if it's made it to the final node (whether or not existing)
- *
- * build information (v1.1.1):
- * - fixed bug in bindModel() where rootElement was set to "body" string instead of DOM object (document.body) when defaulting
- *
- * build information (v1.1.0):
- * - added extractRawDataJson() (and extractRawData) which allows to extract either all model as-is (without removal of deleted array elements) or a part/value within 
- *	 the model according to a given path. The path format is the same as all model indicators. 
- *   extractRawData() and extractRawDataJson() are thus exposed to the user, and for that reason return a copy of the relevant object.
- * - added locateAndFetchNode() which is the functional part behind extractRawDataJson() that retreives the relevant node/value. It returns either the
- *   value if located, or null/undefined if encountered anyway along the given path. 
- *
- * build information (v1.0.8):
- * - wrapped event initialization inside refreshEvents() so it is renewed when using forceUpdateForField(). In rare cases forceUpdateForField is called
- *   within another change-event and if not renewed it tries to use the same dispatched event (which is invalid and thus throws and exception).
- * - removed redundant function wrapping for methods' exposition and used the original "private" functions directly
- *
- * build information (v1.0.7):
- * - added forceUpdateForField() for modularity, convenience and safety of user force-update
- * - to support the above method, added triggerEventForField() which is also used now with bindModel();
- *
- * build information (v1.0.6):
- * - renamed module for collision safety
- *
- * build information (v1.0.5):
- * - implemented radio buttons
- *
- * build information (v1.0.4):
- * - added binding to input[type=number]
- * 
- * build information (v1.0.3):
- * - because of specific requirement of a project the deleteNode option was added and exposed. 
- * 	 it might be better to put in a different branch but it's not practical. So a config parameter was added to allow deletion at all or not
- *   for each specific model wrapper.
- *
  **/
 
 var OneWayDataBinder = function(options) {
